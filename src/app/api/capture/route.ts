@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     // Honeypot check — "website" field should be empty (hidden from real users)
     if (website) {
       // Silently accept to not alert bots
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, emailDelivered: false });
     }
 
     if (!email || !email.includes('@')) {
@@ -46,7 +46,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      emailDelivered: result.emailDelivered ?? false,
+    });
   } catch (error) {
     console.error('Capture API error:', error);
     return NextResponse.json(

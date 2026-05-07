@@ -62,3 +62,24 @@ Stage Summary:
 - Credex integration: API credits + enterprise volume discounts flagged
 - 15 test cases covering audit engine edge cases
 - 12 documentation files + CI workflow + .env.example all present
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix email sending and share buttons to work in reality
+
+Work Log:
+- Identified root causes: (1) No NEXT_PUBLIC_BASE_URL in .env → shareable URLs were broken/relative, (2) No RESEND_API_KEY → emails just console.log'd, (3) "Email My Report" opened modal that said "sent" but never delivered, (4) Share buttons received broken URLs
+- Added NEXT_PUBLIC_BASE_URL to .env for proper URL construction
+- Rewrote AuditResults.tsx: Construct shareableUrl using window.location.origin as fallback, added emailMyReport() that opens user's email client via mailto: with pre-composed audit report
+- Rewrote ShareButtons.tsx: Added "Email" share button using mailto:, improved copy link with prompt() fallback, added noopener/noreferrer to window.open calls
+- Rewrote EmailCaptureModal.tsx: After successful lead capture, shows "Open Report in Browser" button, "Send to My Email via Email Client" (mailto:), copy link field, and the full shareable URL displayed
+- Rewrote email.ts: sendEmail now returns { success, delivered } so UI knows if Resend was used, added better console logging for dev mode
+- Updated capture API route to return emailDelivered status
+- All API endpoints verified working via curl
+- Build compiles successfully
+
+Stage Summary:
+- "Email My Report" now opens user's email client with pre-composed report (works without any API key)
+- Share buttons (Copy Link, Twitter, LinkedIn, Email) all work with proper full URLs
+- EmailCaptureModal now provides 3 ways to access the report: open in browser, send via email client, copy link
+- For production email delivery (Resend), set RESEND_API_KEY in .env

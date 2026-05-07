@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { X, Mail, CheckCircle2, Loader2, Bell } from 'lucide-react';
+import { X, Mail, CheckCircle2, Loader2, Bell, Copy, Check, ExternalLink } from 'lucide-react';
 
 interface EmailCaptureModalProps {
   auditId?: string;
@@ -31,6 +31,7 @@ export default function EmailCaptureModal({
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const isNotify = mode === 'notify';
 
@@ -83,6 +84,44 @@ export default function EmailCaptureModal({
     }
   };
 
+  const copyShareableLink = async () => {
+    if (!shareableUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareableUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = shareableUrl;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    }
+  };
+
+  const openReportLink = () => {
+    if (shareableUrl) {
+      window.open(shareableUrl, '_blank');
+    }
+  };
+
+  const openInEmailClient = () => {
+    if (!shareableUrl) return;
+    const savings = monthlySavings ? `$${monthlySavings.toFixed(0)}` : '';
+    const subject = encodeURIComponent(`Your AI Spend Audit Report${savings ? ` — ${savings}/mo savings found` : ''}`);
+    const body = encodeURIComponent(
+      `Here's your AI Spend Audit report link:\n\n${shareableUrl}\n\n` +
+        (monthlySavings ? `You could save $${monthlySavings.toFixed(0)}/month on AI tools!\n\n` : '') +
+        `Get your own free audit at ${window.location.origin}`
+    );
+    window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`, '_self');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <Card className="w-full max-w-md relative">
@@ -111,17 +150,72 @@ export default function EmailCaptureModal({
         </CardHeader>
         <CardContent>
           {success ? (
-            <div className="text-center py-4">
-              <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" />
-              <p className="font-medium mb-1">
-                {isNotify ? 'We\'ll keep you posted!' : 'Report sent!'}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {isNotify
-                  ? 'We\'ll email you when pricing changes or new savings apply to your stack. No spam, ever.'
-                  : 'Check your inbox for a link to your personalized audit report.'}
-              </p>
-              <Button onClick={onClose} className="mt-4" variant="outline">
+            <div className="py-4 space-y-4">
+              <div className="text-center">
+                <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" />
+                <p className="font-medium mb-1">
+                  {isNotify ? 'We\'ll keep you posted!' : 'Your email has been saved!'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {isNotify
+                    ? 'We\'ll email you when pricing changes or new savings apply to your stack. No spam, ever.'
+                    : 'We\'ve saved your info. Use the options below to access your report right now.'}
+                </p>
+              </div>
+
+              {/* Quick access to the report */}
+              {shareableUrl && !isNotify && (
+                <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                  <p className="text-sm font-medium text-center">Access Your Report Now</p>
+
+                  {/* Open in browser */}
+                  <Button
+                    onClick={openReportLink}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" /> Open Report in Browser
+                  </Button>
+
+                  {/* Send via your email client */}
+                  <Button
+                    variant="outline"
+                    onClick={openInEmailClient}
+                    className="w-full"
+                  >
+                    <Mail className="mr-2 h-4 w-4" /> Send to My Email via Email Client
+                  </Button>
+
+                  {/* Copy link */}
+                  <div className="flex gap-2">
+                    <div className="flex-1 text-xs bg-background rounded border px-3 py-2 truncate text-muted-foreground">
+                      {shareableUrl}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={copyShareableLink}
+                      className="shrink-0"
+                    >
+                      {linkCopied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {isNotify && shareableUrl && (
+                <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                  <p className="text-sm font-medium text-center">View Your Current Report</p>
+                  <Button
+                    onClick={openReportLink}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" /> Open Report
+                  </Button>
+                </div>
+              )}
+
+              <Button onClick={onClose} variant="secondary" className="w-full">
                 Close
               </Button>
             </div>
@@ -130,7 +224,7 @@ export default function EmailCaptureModal({
               <p className="text-sm text-muted-foreground">
                 {isNotify
                   ? 'We\'ll email you when new savings opportunities match your tool stack. No spam, ever.'
-                  : 'We\'ll email you a link to your report. No spam, ever.'}
+                  : 'Enter your email to save your results. We\'ll also give you instant access to your report link.'}
               </p>
               <div className="space-y-2">
                 <Label htmlFor="email">Email *</Label>
@@ -194,12 +288,12 @@ export default function EmailCaptureModal({
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
                   </>
                 ) : isNotify ? (
                   'Notify Me'
                 ) : (
-                  'Send My Report'
+                  'Save & Get My Report'
                 )}
               </Button>
             </form>
