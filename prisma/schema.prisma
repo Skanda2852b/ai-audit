@@ -1,0 +1,34 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model SharedAudit {
+  id           String   @id @default(cuid())
+  auditData    String   // JSON string of AuditResult
+  toolsSummary String   // JSON string of tools summary
+  useCase      String   @map("use_case")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("shared_audits")
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  email          String
+  company        String?
+  role           String?
+  teamSize       Int?     @map("team_size")
+  auditId        String?  @map("audit_id")
+  monthlySavings Float?   @map("monthly_savings")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("leads")
+}
