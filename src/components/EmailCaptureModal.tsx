@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { X, Mail, CheckCircle2, Loader2, Bell, Copy, Check, ExternalLink } from 'lucide-react';
+import { X, Mail, CheckCircle2, Loader2, Bell, Copy, Check, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface EmailCaptureModalProps {
   auditId?: string;
@@ -32,6 +32,17 @@ export default function EmailCaptureModal({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [emailDelivered, setEmailDelivered] = useState<boolean | null>(null);
+
+  // Check if email service is configured on the server
+  const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/email-config')
+      .then((r) => r.json())
+      .then((data) => setEmailConfigured(data.configured))
+      .catch(() => setEmailConfigured(false));
+  }, []);
 
   const isNotify = mode === 'notify';
 
@@ -76,6 +87,7 @@ export default function EmailCaptureModal({
         return;
       }
 
+      setEmailDelivered(data.emailDelivered ?? false);
       setSuccess(true);
     } catch {
       setError('Network error. Please try again.');
@@ -110,17 +122,9 @@ export default function EmailCaptureModal({
     }
   };
 
-  const openInEmailClient = () => {
-    if (!shareableUrl) return;
-    const savings = monthlySavings ? `$${monthlySavings.toFixed(0)}` : '';
-    const subject = encodeURIComponent(`Your AI Spend Audit Report${savings ? ` — ${savings}/mo savings found` : ''}`);
-    const body = encodeURIComponent(
-      `Here's your AI Spend Audit report link:\n\n${shareableUrl}\n\n` +
-        (monthlySavings ? `You could save $${monthlySavings.toFixed(0)}/month on AI tools!\n\n` : '') +
-        `Get your own free audit at ${window.location.origin}`
-    );
-    window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`, '_self');
-  };
+  // Determine what success message to show
+  const wasEmailSent = emailDelivered === true;
+  const showNotConfiguredWarning = emailDelivered === false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -129,7 +133,7 @@ export default function EmailCaptureModal({
           variant="ghost"
           size="sm"
           onClick={onClose}
-          className="absolute top-3 right-3"
+          className="absolute top-3 right-3 z-10"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -138,80 +142,99 @@ export default function EmailCaptureModal({
             {isNotify ? (
               <>
                 <Bell className="h-5 w-5 text-emerald-600" />
-                {success ? 'You\'re on the list!' : 'Get notified about new savings'}
+                {success ? (wasEmailSent ? 'You\'re on the list!' : 'Saved!') : 'Get notified about new savings'}
               </>
             ) : (
               <>
                 <Mail className="h-5 w-5 text-emerald-600" />
-                {success ? 'You\'re all set!' : 'Get your report via email'}
+                {success ? (wasEmailSent ? 'Report sent!' : 'Saved!') : 'Get your report via email'}
               </>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {success ? (
-            <div className="py-4 space-y-4">
-              <div className="text-center">
-                <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" />
-                <p className="font-medium mb-1">
-                  {isNotify ? 'We\'ll keep you posted!' : 'Your email has been saved!'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {isNotify
-                    ? 'We\'ll email you when pricing changes or new savings apply to your stack. No spam, ever.'
-                    : 'We\'ve saved your info. Use the options below to access your report right now.'}
-                </p>
-              </div>
-
-              {/* Quick access to the report */}
-              {shareableUrl && !isNotify && (
-                <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
-                  <p className="text-sm font-medium text-center">Access Your Report Now</p>
-
-                  {/* Open in browser */}
-                  <Button
-                    onClick={openReportLink}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" /> Open Report in Browser
-                  </Button>
-
-                  {/* Send via your email client */}
-                  <Button
-                    variant="outline"
-                    onClick={openInEmailClient}
-                    className="w-full"
-                  >
-                    <Mail className="mr-2 h-4 w-4" /> Send to My Email via Email Client
-                  </Button>
-
-                  {/* Copy link */}
-                  <div className="flex gap-2">
-                    <div className="flex-1 text-xs bg-background rounded border px-3 py-2 truncate text-muted-foreground">
-                      {shareableUrl}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={copyShareableLink}
-                      className="shrink-0"
-                    >
-                      {linkCopied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
+            <div className="py-2 space-y-4">
+              {/* Email was actually sent! */}
+              {wasEmailSent && (
+                <div className="text-center">
+                  <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" />
+                  <p className="font-medium mb-1">
+                    {isNotify ? 'We\'ll keep you posted!' : 'Check your inbox!'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {isNotify
+                      ? `We've sent a confirmation to ${email}. We'll email you when pricing changes or new savings apply to your stack.`
+                      : `We've sent your report to ${email}. Check your inbox (and spam folder) for the email.`}
+                  </p>
                 </div>
               )}
 
-              {isNotify && shareableUrl && (
-                <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
-                  <p className="text-sm font-medium text-center">View Your Current Report</p>
-                  <Button
-                    onClick={openReportLink}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" /> Open Report
-                  </Button>
+              {/* Email was NOT actually sent — email service not configured */}
+              {showNotConfiguredWarning && !isNotify && (
+                <div className="space-y-4">
+                  {/* Warning banner */}
+                  <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Email delivery not configured</p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Your info is saved, but the email couldn&apos;t be delivered because no email service is set up.
+                        Add <code className="bg-amber-100 px-1 rounded">RESEND_API_KEY</code> or <code className="bg-amber-100 px-1 rounded">SMTP_*</code> to your <code className="bg-amber-100 px-1 rounded">.env</code> file.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Direct access to the report */}
+                  {shareableUrl && (
+                    <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                      <p className="text-sm font-medium text-center">Access Your Report Now</p>
+
+                      <Button
+                        onClick={openReportLink}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" /> Open Report in Browser
+                      </Button>
+
+                      <div className="flex gap-2">
+                        <div className="flex-1 text-xs bg-background rounded border px-3 py-2 truncate text-muted-foreground font-mono">
+                          {shareableUrl}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={copyShareableLink}
+                          className="shrink-0"
+                        >
+                          {linkCopied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showNotConfiguredWarning && isNotify && (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Email delivery not configured</p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Your info is saved, but notifications won&apos;t be emailed until an email service is configured.
+                      </p>
+                    </div>
+                  </div>
+                  {shareableUrl && (
+                    <Button
+                      onClick={openReportLink}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" /> View Your Report
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -224,8 +247,22 @@ export default function EmailCaptureModal({
               <p className="text-sm text-muted-foreground">
                 {isNotify
                   ? 'We\'ll email you when new savings opportunities match your tool stack. No spam, ever.'
-                  : 'Enter your email to save your results. We\'ll also give you instant access to your report link.'}
+                  : emailConfigured
+                    ? 'We\'ll send your audit report directly to your inbox.'
+                    : 'Enter your email to save your results and get your report link.'}
               </p>
+
+              {/* Live warning if email not configured */}
+              {emailConfigured === false && !isNotify && (
+                <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700">
+                    Email delivery is not configured yet. Your report link will be shown instead.
+                    Add <code className="bg-amber-100 px-1 rounded text-[11px]">RESEND_API_KEY</code> or <code className="bg-amber-100 px-1 rounded text-[11px]">SMTP_*</code> to .env for real email delivery.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email *</Label>
                 <Input
@@ -288,12 +325,12 @@ export default function EmailCaptureModal({
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
                   </>
                 ) : isNotify ? (
                   'Notify Me'
                 ) : (
-                  'Save & Get My Report'
+                  'Send My Report'
                 )}
               </Button>
             </form>

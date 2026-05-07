@@ -83,3 +83,28 @@ Stage Summary:
 - Share buttons (Copy Link, Twitter, LinkedIn, Email) all work with proper full URLs
 - EmailCaptureModal now provides 3 ways to access the report: open in browser, send via email client, copy link
 - For production email delivery (Resend), set RESEND_API_KEY in .env
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix email delivery — when user gives email, system should directly send email to that inbox
+
+Work Log:
+- Diagnosed root cause: No email service configured. App was logging to console and saying "Report sent!" without actually delivering anything
+- Added Nodemailer + SMTP support as alternative to Resend (users can use Gmail, Outlook, etc.)
+- Rewrote lib/email.ts with dual email backend: Resend (API key) or SMTP (Nodemailer). Returns honest {delivered, method} status
+- Added /api/email-config endpoint so the frontend can check if email delivery is configured
+- Rewrote EmailCaptureModal: 
+  - Checks /api/email-config on mount
+  - Shows yellow warning BEFORE submit if email not configured
+  - After submit: if email delivered → shows "Check your inbox!" with real confirmation
+  - After submit: if email NOT delivered → shows amber warning "Email delivery not configured" + provides "Open Report in Browser" button + copy link
+  - Never lies about email being sent when it wasn't
+- Rewrote AuditResults: "Email My Report" now opens the capture modal (which triggers real email), removed mailto: approach
+- Updated .env with clear instructions for both Resend and SMTP setup
+- Build passes, all API endpoints tested and working
+
+Stage Summary:
+- Email now uses Resend OR SMTP (Nodemailer) — two options for real email delivery
+- UI is honest: warns before submit if email not configured, and after submit if email wasn't actually delivered
+- User needs to add RESEND_API_KEY or SMTP_* to .env for emails to actually arrive in inbox
+- Without email config, the modal shows the report link directly so users can still access their report

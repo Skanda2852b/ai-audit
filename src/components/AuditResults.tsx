@@ -80,37 +80,6 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
     setShowEmailModal(true);
   };
 
-  // "Email My Report" — opens user's email client with pre-composed email
-  const emailMyReport = () => {
-    if (!shareableUrl) {
-      openReportEmail();
-      return;
-    }
-
-    const savings = formatCurrency(result.totalMonthlySavings);
-    const annualSavings = formatCurrency(result.totalAnnualSavings);
-    const toolList = result.recommendations
-      .map((r) => {
-        const name = TOOL_DISPLAY_NAMES[r.toolName] || r.toolName;
-        return r.monthlySavings > 0
-          ? `- ${name}: ${r.recommendedAction} (Save ${formatCurrency(r.monthlySavings)}/mo)`
-          : `- ${name}: Already optimal`;
-      })
-      .join('\n');
-
-    const subject = encodeURIComponent(`My AI Spend Audit Report — ${savings}/mo savings found`);
-    const body = encodeURIComponent(
-      `Here's my AI Spend Audit report:\n\n` +
-        `Monthly Savings: ${savings}\n` +
-        `Annual Savings: ${annualSavings}\n\n` +
-        `Recommendations:\n${toolList}\n\n` +
-        `View full report: ${shareableUrl}\n\n` +
-        `Get your own free audit at ${window.location.origin}`
-    );
-
-    window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
-  };
-
   const hasCredexEligible = result.recommendations.some((r) => r.credexEligible);
 
   return (
@@ -337,18 +306,10 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
             <ShareButtons shareableUrl={shareableUrl} savings={result.totalMonthlySavings} />
           )}
           <Button
-            variant="outline"
-            onClick={emailMyReport}
-            className="flex-1"
+            onClick={openReportEmail}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <Mail className="mr-2 h-4 w-4" /> Email My Report
-          </Button>
-          <Button
-            variant="outline"
-            onClick={openReportEmail}
-            className="flex-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-          >
-            <Bell className="mr-2 h-4 w-4" /> Get Notified of Price Changes
           </Button>
           {onReset && (
             <Button variant="secondary" onClick={onReset} className="flex-1">

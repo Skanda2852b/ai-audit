@@ -49,6 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       emailDelivered: result.emailDelivered ?? false,
+      emailMethod: result.emailMethod ?? null,
     });
   } catch (error) {
     console.error('Capture API error:', error);
