@@ -47,12 +47,13 @@
 │  ┌───────────────┐  ┌───────────────┐  ┌──────────────────┐     │
 │  │ /api/audit    │  │/api/llm-      │  │ /api/capture     │     │
 │  │ (runAudit +   │  │ summary       │  │ (lead capture +  │     │
-│  │  save result) │  │(LLM summary   │  │  send email)     │     │
-│  └───────┬───────┘  │with fallback) │  └────────┬─────────┘     │
-│          │          └───────┬───────┘           │                │
-└──────────┼──────────────────┼───────────────────┼────────────────┘
-           │                  │                   │
-           ▼                  ▼                   ▼
+│  │  save result) │  │(LLM summary   │  │  send email +    │     │
+│  │               │  │with fallback) │  │  honeypot check) │     │
+│  └───────┬───────┘  └───────┬───────┘  └────────┬─────────┘     │
+│          │                  │                    │                │
+└──────────┼──────────────────┼────────────────────┼───────────────┘
+           │                  │                    │
+           ▼                  ▼                    ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                       LIBRARY LAYER                              │
 │                                                                  │
@@ -60,7 +61,8 @@
 │  │ auditEngine   │  │ llm.ts        │  │ email.ts         │     │
 │  │ (pricing +    │  │(z-ai-web-dev- │  │(Resend API +     │     │
 │  │  rules +      │  │ sdk + fallback│  │ lead capture +   │     │
-│  │  calculate)   │  │ template)     │  │ DB write)        │     │
+│  │  calculate +  │  │ template)     │  │ DB write)        │     │
+│  │  Credex)      │  │               │  │                  │     │
 │  └───────────────┘  └───────────────┘  └──────────────────┘     │
 │                                                                  │
 │  ┌───────────────┐  ┌───────────────┐                           │
@@ -68,7 +70,7 @@
 │  │(Prisma client │  │(cn + helpers) │                           │
 │  │ singleton)    │  │               │                           │
 │  └───────┬───────┘  └───────────────┘                           │
-└──────────┼───────────────────────────────────────────────────────┘
+└──────────┼──────────────────────────────────────────────────────┘
            │
            ▼
 ┌──────────────────────────────────────────────────────────────────┐
@@ -89,6 +91,23 @@
 │              SQLite (file: db/custom.db)                         │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Anti-Abuse: Honeypot Approach
+
+The `/api/capture` endpoint uses a **honeypot field** to filter bot submissions rather than rate limiting or CAPTCHAs. A hidden input field (`website`) is included in the `EmailCaptureModal` form. Real users never see or fill this field, but automated bots typically populate all form fields. If the honeypot field contains any value, the submission is silently rejected (returning a 200 response so bots don't detect the trap).
+
+**Why honeypot over alternatives:**
+
+| Approach         | Pros                                    | Cons                                          |
+| ---------------- | --------------------------------------- | --------------------------------------------- |
+| Honeypot (chosen)| No external service, invisible to users, zero latency, blocks common bots | Doesn't stop targeted attacks, can be bypassed by sophisticated scrapers |
+| Rate limiting    | Throttles all traffic fairly            | Requires Redis/Vercel KV, adds latency, can block legit users |
+| CAPTCHA          | Strong bot protection                   | Hurts conversion, accessibility issues, requires third-party service |
+| Turnstile        | Better UX than CAPTCHA                  | Still requires Cloudflare dependency           |
+
+The honeypot approach is the right fit for this project: it needs no external infrastructure, adds zero friction to the user experience, and effectively blocks the most common automated submissions. If targeted abuse becomes a problem, we can layer on Turnstile without removing the honeypot.
 
 ---
 
@@ -137,7 +156,7 @@ model Lead {
 | ------ | ------------------ | ------------------------------------------------- | -------------------------------------- | ----------------------------------------------- |
 | POST   | `/api/audit`       | Run the audit engine, save result, return savings | `ToolInput` (tools + primaryUseCase)   | `AuditResult` + `shareableId` + `shareableUrl`  |
 | POST   | `/api/llm-summary` | Generate AI summary for audit results             | `{ auditData: AuditResult }`           | `{ summary: string }`                           |
-| POST   | `/api/capture`     | Capture lead email, send report                   | `{ email, company?, role?, teamSize?, auditId?, monthlySavings?, shareableUrl?, website? }` | `{ success: boolean }` |
+| POST   | `/api/capture`     | Capture lead email, send report (honeypot-gated)  | `{ email, company?, role?, teamSize?, auditId?, monthlySavings?, shareableUrl?, website? }` | `{ success: boolean }` |
 | GET    | `/api/route.ts`    | Health check                                      | —                                      | —                                               |
 
 ### Error Handling Pattern
@@ -184,6 +203,7 @@ app/layout.tsx (root layout)
     │   ├── Card (current vs optimized bar)
     │   ├── Card (AI summary)
     │   ├── Card (detailed recommendations)
+    │   ├── Card (Credex savings — shown for eligible users)
     │   ├── ShareButtons
     │   │   ├── Button (copy link)
     │   │   ├── Button (Twitter)
@@ -220,6 +240,36 @@ The `page.tsx` component is the single state container. It holds:
 - `loading: boolean` — true during API call
 
 No global state library (Redux, Zustand) is needed. The state is simple and localized to one page.
+
+---
+
+## Current Component State
+
+### Supported Tools (8)
+
+The audit engine currently covers 8 AI tools with their full plan hierarchies:
+
+| Tool            | Plans                                                        |
+| --------------- | ------------------------------------------------------------ |
+| Cursor          | Hobby, Pro, Business, Enterprise                             |
+| GitHub Copilot  | Individual, Business, Enterprise                             |
+| Claude          | Free, Pro, Max, Team, Enterprise, API Direct                 |
+| ChatGPT         | Free, Plus, Team, Enterprise, API Direct                     |
+| Anthropic API   | Pay-as-you-go                                                |
+| OpenAI API      | Pay-as-you-go                                                |
+| Gemini          | Free, Pro, Ultra, API                                        |
+| Windsurf        | Free, Pro, Team                                              |
+
+### Credex Integration
+
+The audit engine surfaces Credex credits recommendations for eligible users:
+- API Direct users spending >$100/month
+- Enterprise plan users spending >$200/month
+- Credex offers 10–20% below retail on AI credits
+
+### Notify Mode
+
+When `RESEND_API_KEY` is not set, the email system operates in **notify mode** — emails are logged to the server console instead of being sent. This ensures the full flow works in development without requiring email infrastructure.
 
 ---
 
@@ -266,3 +316,50 @@ No global state library (Redux, Zustand) is needed. The state is simple and loca
 **Pro:** Lowest possible friction — the "3 minutes, no login" promise. Higher conversion rates.
 **Con:** No way to save audit history per user, no personalized dashboard, no way to re-engage users who don't capture their email.
 **When to revisit:** If we build the "pricing alerts" or "AI Spend Dashboard" features, add lightweight auth (magic link or OAuth).
+
+---
+
+## How to Scale to 10k Audits/Day
+
+The current architecture handles tens of audits per day comfortably. Here's the path to 10,000:
+
+### 1. Database: SQLite → PostgreSQL
+
+At ~7 audits/minute sustained, SQLite's single-writer lock becomes a bottleneck. Migrate to PostgreSQL:
+- Change `DATABASE_URL` to a Postgres connection string
+- Run `prisma migrate` to create the schema
+- Use connection pooling (e.g., PgBouncer or Supabase pooler)
+- Add indexes on `shared_audits.created_at` and `leads.email`
+
+### 2. Caching: Add Redis
+
+- Cache LLM summaries for identical audit inputs (TTL: 1 hour)
+- Cache vendor pricing data (though it's currently hardcoded, a future pricing API would benefit)
+- Use Redis for rate limiting if we move beyond honeypot protection
+
+### 3. LLM Summary: Queue-Based Processing
+
+At 10k audits/day, ~7 LLM API calls/minute could hit rate limits:
+- Move LLM summary generation to a job queue (BullMQ + Redis)
+- Return the audit result immediately; load the AI summary via polling or WebSocket
+- Pre-warm summary cache for common tool combinations
+
+### 4. Static Generation for Shared Results
+
+Shared result pages (`/result/[id]`) currently hit the database on every request:
+- Use Next.js ISR (Incremental Static Regeneration) with a revalidation period
+- Or serve results from a CDN cache with stale-while-revalidate
+
+### 5. Horizontal Scaling
+
+The standalone Next.js server can scale horizontally behind a load balancer:
+- Run 2–4 instances behind Caddy or an ALB
+- Ensure SQLite is replaced with Postgres before horizontal scaling (multiple servers can't share a SQLite file)
+- Use shared state in Redis for any session data
+
+### 6. Monitoring
+
+Add observability before scaling:
+- Request logging with structured JSON (Pino)
+- APM for API route latency (Sentry or DataDog)
+- Alert on: >5% LLM failure rate, >500ms p95 API response time, >1% email send failures

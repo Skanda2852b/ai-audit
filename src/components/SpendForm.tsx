@@ -13,16 +13,39 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, Sparkles } from 'lucide-react';
-import { ToolEntry, ToolInput } from '@/types';
-import { getAllToolNames, getPlansForTool, getToolPricing } from '@/lib/auditEngine';
+import { ToolEntry, ToolInput, UseCase } from '@/types';
+import {
+  getAllToolNames,
+  getPlansForTool,
+  getToolPricing,
+  TOOL_DISPLAY_NAMES,
+  getApiSpendEstimate,
+} from '@/lib/auditEngine';
 
 const TOOL_NAMES = getAllToolNames();
 
-const USE_CASES = [
+const USE_CASES: { value: UseCase; label: string }[] = [
   { value: 'coding', label: 'Coding / Development' },
   { value: 'writing', label: 'Writing / Content' },
+  { value: 'data', label: 'Data Analysis' },
+  { value: 'research', label: 'Research' },
   { value: 'mixed', label: 'Mixed / General' },
-] as const;
+];
+
+const PLAN_DISPLAY_NAMES: Record<string, string> = {
+  hobby: 'Hobby (Free)',
+  pro: 'Pro',
+  business: 'Business',
+  enterprise: 'Enterprise',
+  individual: 'Individual',
+  free: 'Free',
+  max: 'Max',
+  team: 'Team',
+  plus: 'Plus',
+  ultra: 'Ultra',
+  api: 'API Direct',
+  pay_as_you_go: 'Pay-as-you-go',
+};
 
 interface SpendFormProps {
   onSubmit: (data: ToolInput) => void;
@@ -39,9 +62,15 @@ function createEmptyTool(): ToolEntry {
   };
 }
 
-function loadSavedFormData(): { tools: ToolEntry[]; primaryUseCase: ToolInput['primaryUseCase'] } {
+interface SavedFormData {
+  tools: ToolEntry[];
+  primaryUseCase: UseCase;
+  teamSize: number;
+}
+
+function loadSavedFormData(): SavedFormData {
   if (typeof window === 'undefined') {
-    return { tools: [createEmptyTool()], primaryUseCase: 'coding' };
+    return { tools: [createEmptyTool()], primaryUseCase: 'coding', teamSize: 5 };
   }
   try {
     const saved = localStorage.getItem('spendFormData');
@@ -51,19 +80,21 @@ function loadSavedFormData(): { tools: ToolEntry[]; primaryUseCase: ToolInput['p
         return {
           tools: parsed.tools,
           primaryUseCase: parsed.primaryUseCase || 'coding',
+          teamSize: parsed.teamSize || 5,
         };
       }
     }
   } catch {
     // ignore parse errors
   }
-  return { tools: [createEmptyTool()], primaryUseCase: 'coding' };
+  return { tools: [createEmptyTool()], primaryUseCase: 'coding', teamSize: 5 };
 }
 
 export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
   const saved = loadSavedFormData();
   const [tools, setTools] = useState<ToolEntry[]>(saved.tools);
-  const [primaryUseCase, setPrimaryUseCase] = useState<ToolInput['primaryUseCase']>(saved.primaryUseCase);
+  const [primaryUseCase, setPrimaryUseCase] = useState<UseCase>(saved.primaryUseCase);
+  const [teamSize, setTeamSize] = useState(saved.teamSize);
 
   const addTool = () => {
     setTools([...tools, createEmptyTool()]);
@@ -76,7 +107,16 @@ export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
 
   const recalcSpend = (toolName: string, plan: string, seats: number): number => {
     const pricing = getToolPricing(toolName);
-    return (pricing?.[plan] ?? 0) * seats;
+    const pricePerSeat = pricing?.[plan] ?? 0;
+    if (pricePerSeat > 0) {
+      return pricePerSeat * seats;
+    }
+    // For API / pay-as-you-go plans, estimate based on typical usage
+    const estimate = getApiSpendEstimate(toolName);
+    if (estimate && (plan === 'api' || plan === 'pay_as_you_go')) {
+      return estimate.typical * seats;
+    }
+    return 0;
   };
 
   const updateTool = (index: number, field: keyof ToolEntry, value: string | number) => {
@@ -97,7 +137,7 @@ export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
     } else if (field === 'monthlySpend') {
       tool.monthlySpend = Math.max(0, Number(value) || 0);
     } else if (field === 'useCase') {
-      tool.useCase = value as ToolEntry['useCase'];
+      tool.useCase = value as UseCase;
     }
 
     updated[index] = tool;
@@ -106,13 +146,55 @@ export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const data: ToolInput = { tools, primaryUseCase };
+    const data: ToolInput = { tools, primaryUseCase, teamSize };
     localStorage.setItem('spendFormData', JSON.stringify(data));
     onSubmit(data);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Team Size (global) */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="team-size">Total Team Size</Label>
+              <Input
+                id="team-size"
+                type="number"
+                min={1}
+                value={teamSize}
+                onChange={(e) => setTeamSize(Math.max(1, Number(e.target.value) || 1))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Your total engineering team size (helps detect over-provisioned seats)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="primary-use-case">Primary Use Case</Label>
+              <Select
+                value={primaryUseCase}
+                onValueChange={(v) => setPrimaryUseCase(v as UseCase)}
+              >
+                <SelectTrigger id="primary-use-case">
+                  <SelectValue placeholder="Select primary use case" />
+                </SelectTrigger>
+                <SelectContent>
+                  {USE_CASES.map((uc) => (
+                    <SelectItem key={uc.value} value={uc.value}>
+                      {uc.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                What your team primarily uses AI tools for
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {tools.map((tool, index) => (
         <Card key={index} className="relative">
           <CardHeader className="pb-3">
@@ -145,7 +227,7 @@ export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
                 <SelectContent>
                   {TOOL_NAMES.map((name) => (
                     <SelectItem key={name} value={name}>
-                      {name.charAt(0).toUpperCase() + name.slice(1)}
+                      {TOOL_DISPLAY_NAMES[name] || name.charAt(0).toUpperCase() + name.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -163,18 +245,23 @@ export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
                   <SelectValue placeholder="Select plan" />
                 </SelectTrigger>
                 <SelectContent>
-                  {getPlansForTool(tool.name).map((plan) => (
-                    <SelectItem key={plan} value={plan}>
-                      {plan.charAt(0).toUpperCase() + plan.slice(1)}
-                    </SelectItem>
-                  ))}
+                  {getPlansForTool(tool.name).map((plan) => {
+                    const pricing = getToolPricing(tool.name);
+                    const price = pricing?.[plan];
+                    const priceLabel = price !== undefined && price > 0 ? ` — $${price}/mo` : price === 0 ? ' — Free' : '';
+                    return (
+                      <SelectItem key={plan} value={plan}>
+                        {PLAN_DISPLAY_NAMES[plan] || plan.charAt(0).toUpperCase() + plan.slice(1)}{priceLabel}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Use Case */}
+            {/* Use Case per tool */}
             <div className="space-y-2">
-              <Label htmlFor={`tool-usecase-${index}`}>Primary Use</Label>
+              <Label htmlFor={`tool-usecase-${index}`}>Use Case</Label>
               <Select
                 value={tool.useCase}
                 onValueChange={(v) => updateTool(index, 'useCase', v)}
@@ -215,34 +302,15 @@ export default function SpendForm({ onSubmit, loading }: SpendFormProps) {
                 value={tool.monthlySpend}
                 onChange={(e) => updateTool(index, 'monthlySpend', e.target.value)}
               />
+              {(tool.plan === 'api' || tool.plan === 'pay_as_you_go') && (
+                <p className="text-xs text-muted-foreground">
+                  Estimated based on typical API usage
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
       ))}
-
-      {/* Primary Use Case */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-2">
-            <Label htmlFor="primary-use-case">Overall Primary Use Case</Label>
-            <Select
-              value={primaryUseCase}
-              onValueChange={(v) => setPrimaryUseCase(v as ToolInput['primaryUseCase'])}
-            >
-              <SelectTrigger id="primary-use-case">
-                <SelectValue placeholder="Select primary use case" />
-              </SelectTrigger>
-              <SelectContent>
-                {USE_CASES.map((uc) => (
-                  <SelectItem key={uc.value} value={uc.value}>
-                    {uc.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3">

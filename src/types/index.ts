@@ -1,22 +1,27 @@
+export type UseCase = 'coding' | 'writing' | 'data' | 'research' | 'mixed';
+
 export interface ToolEntry {
   name: string;
   plan: string;
   monthlySpend: number;
   seats: number;
-  useCase: 'coding' | 'writing' | 'mixed';
+  useCase: UseCase;
 }
 
 export interface ToolInput {
   tools: ToolEntry[];
-  primaryUseCase: 'coding' | 'writing' | 'mixed';
+  primaryUseCase: UseCase;
+  teamSize: number;
 }
 
 export interface ToolRecommendation {
   toolName: string;
   currentPlan: string;
+  currentSpend: number;
   recommendedAction: string;
   monthlySavings: number;
   reason: string;
+  credexEligible: boolean;
 }
 
 export interface AuditResult {

@@ -4,11 +4,22 @@ import { captureLeadAndNotify } from '@/lib/email';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, company, role, teamSize, auditId, monthlySavings, shareableUrl, website } = body;
+    const {
+      email,
+      company,
+      role,
+      teamSize,
+      auditId,
+      monthlySavings,
+      shareableUrl,
+      website,
+      notifyMode,
+    } = body;
 
-    // Honeypot check – "website" field should be empty
+    // Honeypot check — "website" field should be empty (hidden from real users)
     if (website) {
-      return NextResponse.json({ error: 'Bot detected' }, { status: 400 });
+      // Silently accept to not alert bots
+      return NextResponse.json({ success: true });
     }
 
     if (!email || !email.includes('@')) {
@@ -18,6 +29,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const isNotify = notifyMode === true;
+
     const result = await captureLeadAndNotify({
       email,
       company,
@@ -26,6 +39,7 @@ export async function POST(req: Request) {
       auditId,
       monthlySavings,
       shareableUrl,
+      isNotify,
     });
 
     if (!result.success) {

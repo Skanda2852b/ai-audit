@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     // Run the audit engine
     const audit = runAudit(body);
 
-    // Store shareable version (no PII)
+    // Store shareable version (no PII — only tool names, plans, seats)
     const toolsSummary = body.tools.map((t) => ({
       name: t.name,
       plan: t.plan,

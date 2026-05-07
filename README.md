@@ -1,6 +1,6 @@
 # AI Spend Audit
 
-Find hidden savings on your AI tools. A free, instant audit that checks your Cursor, GitHub Copilot, ChatGPT, Claude, Gemini, and Windsurf subscriptions against current pricing data and recommends optimizations.
+Find hidden savings on your AI tools. A free, instant audit that checks your Cursor, GitHub Copilot, ChatGPT, Claude, Anthropic API, OpenAI API, Gemini, and Windsurf subscriptions against current pricing data and recommends optimizations.
 
 **No login required. Takes 3 minutes.**
 
@@ -224,16 +224,44 @@ my-project/
 
 ## Supported AI Tools
 
-| Tool            | Plans Covered                              |
-| --------------- | ------------------------------------------ |
-| Cursor          | Hobby ($0), Pro ($20), Business ($40)      |
-| GitHub Copilot  | Individual ($10), Business ($19), Enterprise ($39) |
-| Claude          | Free ($0), Pro ($20), Max ($30), Team ($25), Enterprise ($50) |
-| ChatGPT         | Plus ($20), Team ($25), Enterprise ($30)   |
-| Gemini          | Pro ($10), Ultra ($20)                     |
-| Windsurf        | Pro ($15), Team ($30)                      |
+| Tool            | Plans Covered                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| Cursor          | Hobby ($0), Pro ($20), Business ($40), Enterprise ($60)                                          |
+| GitHub Copilot  | Individual ($10), Business ($19), Enterprise ($39)                                               |
+| Claude          | Free ($0), Pro ($20), Max ($30), Team ($25), Enterprise ($50), API Direct ($0 base, pay-as-you-go) |
+| ChatGPT         | Free ($0), Plus ($20), Team ($25), Enterprise ($30), API Direct ($0 base, pay-as-you-go)          |
+| Anthropic API   | Pay-as-you-go ($0 base, usage-based pricing)                                                     |
+| OpenAI API      | Pay-as-you-go ($0 base, usage-based pricing)                                                     |
+| Gemini          | Free ($0), Pro ($10), Ultra ($20), API ($0 base, usage-based)                                    |
+| Windsurf        | Free ($0), Pro ($15), Team ($30)                                                                 |
 
 All prices are per user/month. See [PRICING_DATA.md](./PRICING_DATA.md) for source URLs and verification dates.
+
+---
+
+## Decisions
+
+Key architectural and technology trade-offs made during development:
+
+### 1. SQLite over Postgres
+
+We chose SQLite for local development and initial deployment. It requires zero configuration, no separate database server, and handles the expected load easily. The migration path to Postgres is straightforward — change `DATABASE_URL` and run `prisma migrate`. We'll revisit when concurrent writes exceed 100/sec or we need cross-audit analytics.
+
+### 2. Honeypot over Rate Limiting
+
+Instead of implementing API rate limiting (which would require external services like Redis or Vercel KV), we use a hidden honeypot field in the email capture form. Bots that fill in the hidden field are silently rejected. This approach needs no external service, is invisible to real users, and blocks common bot submissions without adding latency.
+
+### 3. Hardcoded Pricing over Real-Time API
+
+AI tool pricing is hardcoded in `auditEngine.ts` with sources traced to vendor URLs in `PRICING_DATA.md`. This is faster (no vendor API latency), has no dependency on third-party pricing APIs, and every price is auditable. Updates require a code deployment, which is acceptable given pricing changes happen monthly at most.
+
+### 4. z-ai-web-dev-sdk over Raw OpenAI/Groq
+
+We use the `z-ai-web-dev-sdk` package for LLM chat completions rather than calling OpenAI or Groq APIs directly. The SDK is already installed in the project, handles provider routing, and eliminates the need for separate API key management. If we need to switch LLM providers, only the SDK config changes — no code rewrite.
+
+### 5. JSON Storage in SQLite over Normalized Tables
+
+`AuditResult` is stored as a JSON string in `SharedAudit.auditData` rather than being broken into normalized tables. This makes reads for shareable URLs fast (single query, no joins) and keeps the schema simple. The trade-off is that cross-audit analytics require parsing JSON, but the primary access pattern is "load one audit by ID," not aggregate queries.
 
 ---
 

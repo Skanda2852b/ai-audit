@@ -10,12 +10,13 @@ import {
   DollarSign,
   TrendingDown,
   CheckCircle2,
-  AlertTriangle,
-  Share2,
   Mail,
   Loader2,
+  Zap,
+  Bell,
 } from 'lucide-react';
 import { AuditResult } from '@/types';
+import { TOOL_DISPLAY_NAMES } from '@/lib/auditEngine';
 import EmailCaptureModal from './EmailCaptureModal';
 import ShareButtons from './ShareButtons';
 
@@ -27,6 +28,7 @@ interface AuditResultsProps {
 
 export default function AuditResults({ result, isShareable, onReset }: AuditResultsProps) {
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailModalMode, setEmailModalMode] = useState<'report' | 'notify'>('report');
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
@@ -55,6 +57,18 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+  const openReportEmail = () => {
+    setEmailModalMode('report');
+    setShowEmailModal(true);
+  };
+
+  const openNotifyEmail = () => {
+    setEmailModalMode('notify');
+    setShowEmailModal(true);
+  };
+
+  const hasCredexEligible = result.recommendations.some((r) => r.credexEligible);
 
   return (
     <div className="space-y-6">
@@ -103,6 +117,57 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
           </CardContent>
         </Card>
       </div>
+
+      {/* Credex Prominent Callout for >$500/mo savings */}
+      {result.isHighSavings && (
+        <Card className="border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Zap className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-bold text-lg mb-1">Unlock enterprise-level savings</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  With over {formatCurrency(result.totalMonthlySavings)}/month in potential savings, you could save even more
+                  through discounted enterprise credits and volume pricing. Credex helps companies like yours access
+                  bulk API credits at 10–20% below retail — no contract changes needed.
+                </p>
+                <Button
+                  onClick={openReportEmail}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  Get a free savings consultation
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* "You're spending well" message for optimal stacks */}
+      {result.isOptimal && result.totalMonthlySavings < 20 && (
+        <Card className="border-2 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-bold text-lg mb-1">You&apos;re spending well</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Your AI tool stack is already well-optimized. We couldn&apos;t find significant savings opportunities
+                  with your current setup. But pricing changes frequently — we can notify you when new
+                  optimizations apply to your stack.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={openNotifyEmail}
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
+                >
+                  <Bell className="mr-2 h-4 w-4" /> Notify me when new savings appear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current vs Optimized Bar */}
       <Card>
@@ -166,11 +231,21 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
               {i > 0 && <Separator className="mb-4" />}
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-semibold capitalize">{rec.toolName}</h4>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h4 className="font-semibold">
+                      {TOOL_DISPLAY_NAMES[rec.toolName] || rec.toolName.charAt(0).toUpperCase() + rec.toolName.slice(1)}
+                    </h4>
                     <Badge variant="outline" className="text-xs">
                       {rec.currentPlan}
                     </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {formatCurrency(rec.currentSpend)}/mo
+                    </Badge>
+                    {rec.credexEligible && (
+                      <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
+                        Credex eligible
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-sm font-medium mb-1">{rec.recommendedAction}</p>
                   <p className="text-sm text-muted-foreground">{rec.reason}</p>
@@ -194,6 +269,24 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
         </CardContent>
       </Card>
 
+      {/* Credex note for API credits */}
+      {hasCredexEligible && !result.isHighSavings && (
+        <Card className="border border-amber-200 bg-amber-50/50 dark:bg-amber-950/10">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Zap className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm">
+                  <span className="font-semibold">Want to save on API costs?</span>{' '}
+                  Some of your tools are eligible for discounted credits through Credex — typically 10–20%
+                  below retail rates with no contract changes.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Action Buttons */}
       {!isShareable && (
         <div className="flex flex-col sm:flex-row gap-3">
@@ -202,7 +295,7 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
           )}
           <Button
             variant="outline"
-            onClick={() => setShowEmailModal(true)}
+            onClick={openReportEmail}
             className="flex-1"
           >
             <Mail className="mr-2 h-4 w-4" /> Email My Report
@@ -221,6 +314,7 @@ export default function AuditResults({ result, isShareable, onReset }: AuditResu
           auditId={result.shareableId}
           monthlySavings={result.totalMonthlySavings}
           shareableUrl={result.shareableUrl}
+          mode={emailModalMode}
           onClose={() => setShowEmailModal(false)}
         />
       )}
