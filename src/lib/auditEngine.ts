@@ -94,11 +94,11 @@ export function runAudit(input: ToolInput): AuditResult {
       reason = `Your team size (${seats} seat${seats !== 1 ? 's' : ''}) fits better with the ${recommendedPlan} plan. You're overpaying for features you don't need.`;
     }
 
-    // 2. Alternative tool check (only if savings from plan change < $50)
+    // 2. Alternative tool check (only if no plan-level savings found yet)
     // Skip for API/pay-as-you-go plans — these are usage-based, not subscription-based
     const isApiPlan = plan === 'api' || plan === 'pay_as_you_go';
     const isApiTool = name === 'anthropic-api' || name === 'openai-api';
-    if (savings < 50 && monthlySpend >= 30 && !isApiPlan && !isApiTool) {
+    if (savings === 0 && monthlySpend >= 30 && !isApiPlan && !isApiTool) {
       const alt = ALTERNATIVES[useCase];
       if (alt && !isSameToolFamily(alt.cheaperTool, name)) {
         const altPrice = getAlternativePrice(alt.cheaperTool);
