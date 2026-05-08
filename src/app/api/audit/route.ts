@@ -2,8 +2,19 @@ import { NextResponse } from 'next/server';
 import { runAudit } from '@/lib/auditEngine';
 import { db } from '@/lib/db';
 import { ToolInput } from '@/types';
+import { rateLimit, getClientIp } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
+  // Rate limit: 10 audits per IP per 15 minutes
+  const ip = getClientIp(req);
+  const rl = rateLimit(`audit:${ip}`, 10, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Too many requests. Please wait ${rl.retryAfterSeconds} seconds before trying again.` },
+      { status: 429 }
+    );
+  }
+
   try {
     const body: ToolInput = await req.json();
 
@@ -42,8 +53,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // Build shareable URL — NEXT_PUBLIC_BASE_URL is preferred for server-side,
-    // but the client-side code also reconstructs the full URL using window.location.origin
+    // Build shareable URL
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '';
     const shareableUrl = baseUrl
       ? `${baseUrl}/result/${sharedAudit.id}`

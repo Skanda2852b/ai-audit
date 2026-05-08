@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
 import { captureLeadAndNotify } from '@/lib/email';
+import { rateLimit, getClientIp } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
+  // Rate limit: 5 lead captures per IP per hour (prevents email spam)
+  const ip = getClientIp(req);
+  const rl = rateLimit(`capture:${ip}`, 5, 60 * 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Too many requests. Please wait ${rl.retryAfterSeconds} seconds before trying again.` },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await req.json();
     const {

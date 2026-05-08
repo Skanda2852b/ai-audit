@@ -22,7 +22,8 @@ Every recommendation traces back to official vendor pricing. No guesses, no affi
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) v1.3+ (or Node.js 20+)
+- Node.js 20+
+- npm (comes with Node.js)
 - Git
 
 ### Installation
@@ -30,17 +31,17 @@ Every recommendation traces back to official vendor pricing. No guesses, no affi
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd my-project
+cd ai-audit
 
 # Install dependencies
-bun install
+npm install
 
 # Set up the database
-bun run db:push
-bun run db:generate
+npm run db:push
+npm run db:generate
 
 # Start the development server
-bun run dev
+npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -54,14 +55,18 @@ Create a `.env` file in the project root (or set these in your deployment enviro
 | Variable                  | Required | Default          | Description                                          |
 | ------------------------- | -------- | ---------------- | ---------------------------------------------------- |
 | `DATABASE_URL`            | Yes      | `file:./db/custom.db` | SQLite database connection string               |
-| `RESEND_API_KEY`          | No       | —                | Resend API key for sending emails. If not set, emails are logged to console instead. |
+| `GROQ_API_KEY`            | No       | —                | Groq API key for AI-generated summaries. If not set, a template summary is used instead. Get one free at [console.groq.com](https://console.groq.com). |
+| `RESEND_API_KEY`          | No       | —                | Resend API key for sending emails. If not set, emails are logged to console instead. Get one free at [resend.com](https://resend.com). |
+| `RESEND_FROM`             | No       | `onboarding@resend.dev` | The sender address shown in outgoing emails. |
 | `NEXT_PUBLIC_BASE_URL`    | No       | `""`             | Base URL for generating shareable links (e.g., `https://yourdomain.com`) |
 
 ### Example `.env`
 
 ```env
 DATABASE_URL="file:./db/custom.db"
+GROQ_API_KEY="gsk_xxxxxxxxxxxx"
 RESEND_API_KEY="re_xxxxxxxxxxxx"
+RESEND_FROM="AI Spend Audit <onboarding@resend.dev>"
 NEXT_PUBLIC_BASE_URL="https://aispendaudit.com"
 ```
 
@@ -71,35 +76,29 @@ NEXT_PUBLIC_BASE_URL="https://aispendaudit.com"
 
 ```bash
 # Development server with hot reload
-bun run dev
-
-# Run tests
-bun test
+npm run dev
 
 # Lint code
-bun run lint
+npm run lint
 
 # Build for production
-bun run build
-
-# Start production server
-bun run start
+npm run build
 ```
 
 ### Database Commands
 
 ```bash
 # Push schema changes to the database (development)
-bun run db:push
+npm run db:push
 
 # Generate Prisma client
-bun run db:generate
+npm run db:generate
 
 # Create a migration (if switching to Postgres)
-bun run db:migrate
+npm run db:migrate
 
 # Reset the database
-bun run db:reset
+npm run db:reset
 ```
 
 ---
@@ -112,7 +111,7 @@ The project uses Next.js standalone output mode for minimal deployment footprint
 
 ```bash
 # Build the application
-bun run build
+npm run build
 
 # This creates:
 # .next/standalone/  - Minimal server bundle
@@ -123,7 +122,7 @@ bun run build
 ### Running in Production
 
 ```bash
-NODE_ENV=production bun .next/standalone/server.js
+NODE_ENV=production node .next/standalone/server.js
 ```
 
 ### Reverse Proxy (Caddy)
@@ -139,9 +138,9 @@ yourdomain.com {
 ### Deployment Checklist
 
 1. Set all environment variables on the production server
-2. Run `bun run db:push` to create/migrate the database
-3. Run `bun run build` to create the production bundle
-4. Start the server with `bun run start` or the standalone command
+2. Run `npm run db:push` to create/migrate the database
+3. Run `npm run build` to create the production bundle
+4. Start the server with `node .next/standalone/server.js`
 5. Verify the health check at `/api/route.ts`
 6. Test the full flow: form → audit → results → email → share
 
@@ -150,7 +149,7 @@ yourdomain.com {
 ## Project Structure
 
 ```
-my-project/
+ai-audit/
 ├── src/
 │   ├── app/                        # Next.js App Router
 │   │   ├── page.tsx                # Home page (form + results)
@@ -173,8 +172,9 @@ my-project/
 │   │
 │   ├── lib/
 │   │   ├── auditEngine.ts          # Core audit logic + pricing data
-│   │   ├── llm.ts                  # LLM summary + fallback template
-│   │   ├── email.ts                # Email sending + lead capture
+│   │   ├── llm.ts                  # Groq AI summary + fallback template
+│   │   ├── email.ts                # Email sending via Resend + lead capture
+│   │   ├── rateLimit.ts            # In-memory IP-based rate limiter
 │   │   ├── db.ts                   # Prisma client singleton
 │   │   └── utils.ts                # Utility functions (cn, etc.)
 │   │
@@ -247,17 +247,17 @@ Key architectural and technology trade-offs made during development:
 
 We chose SQLite for local development and initial deployment. It requires zero configuration, no separate database server, and handles the expected load easily. The migration path to Postgres is straightforward — change `DATABASE_URL` and run `prisma migrate`. We'll revisit when concurrent writes exceed 100/sec or we need cross-audit analytics.
 
-### 2. Honeypot over Rate Limiting
+### 2. Honeypot + In-Memory Rate Limiting over External Services
 
-Instead of implementing API rate limiting (which would require external services like Redis or Vercel KV), we use a hidden honeypot field in the email capture form. Bots that fill in the hidden field are silently rejected. This approach needs no external service, is invisible to real users, and blocks common bot submissions without adding latency.
+Two layers of anti-abuse protection are in place. First, a hidden honeypot field in the email capture form silently rejects bots that fill it in. Second, an in-memory IP-based rate limiter (`lib/rateLimit.ts`) caps requests at 10 audits/IP/15 min and 5 lead captures/IP/hour — returning a `429` with a `retryAfterSeconds` hint. No Redis or external KV store is needed for a single-instance deployment.
 
 ### 3. Hardcoded Pricing over Real-Time API
 
 AI tool pricing is hardcoded in `auditEngine.ts` with sources traced to vendor URLs in `PRICING_DATA.md`. This is faster (no vendor API latency), has no dependency on third-party pricing APIs, and every price is auditable. Updates require a code deployment, which is acceptable given pricing changes happen monthly at most.
 
-### 4. z-ai-web-dev-sdk over Raw OpenAI/Groq
+### 4. Groq (llama-3.3-70b) for AI Summaries
 
-We use the `z-ai-web-dev-sdk` package for LLM chat completions rather than calling OpenAI or Groq APIs directly. The SDK is already installed in the project, handles provider routing, and eliminates the need for separate API key management. If we need to switch LLM providers, only the SDK config changes — no code rewrite.
+AI summaries are generated by calling the Groq API directly via `fetch` — no SDK dependency. Groq's inference is extremely fast (typically <1s for 300 tokens), free on the generous free tier, and the OpenAI-compatible endpoint makes the integration trivial. If `GROQ_API_KEY` is not set, the system falls back to a deterministic template summary so the feature degrades gracefully.
 
 ### 5. JSON Storage in SQLite over Normalized Tables
 
