@@ -68,7 +68,8 @@ describe('Audit Engine', () => {
   test('Copilot Enterprise for small team suggests Business plan', () => {
     const input: ToolInput = {
       tools: [
-        { name: 'copilot', plan: 'enterprise', monthlySpend: 39, seats: 5, useCase: 'coding' },
+        // 5 seats × $39/seat (enterprise) = $195 total spend
+        { name: 'copilot', plan: 'enterprise', monthlySpend: 195, seats: 5, useCase: 'coding' },
       ],
       primaryUseCase: 'coding',
       teamSize: 5,
@@ -106,7 +107,8 @@ describe('Audit Engine', () => {
   test('Cursor Enterprise for small team suggests Business', () => {
     const input: ToolInput = {
       tools: [
-        { name: 'cursor', plan: 'enterprise', monthlySpend: 60, seats: 3, useCase: 'coding' },
+        // 3 seats × $60/seat (enterprise) = $180 total spend
+        { name: 'cursor', plan: 'enterprise', monthlySpend: 180, seats: 3, useCase: 'coding' },
       ],
       primaryUseCase: 'coding',
       teamSize: 5,
@@ -119,7 +121,8 @@ describe('Audit Engine', () => {
   test('ChatGPT Enterprise for small team suggests Team', () => {
     const input: ToolInput = {
       tools: [
-        { name: 'chatgpt', plan: 'enterprise', monthlySpend: 30, seats: 3, useCase: 'mixed' },
+        // 3 seats × $30/seat (enterprise) = $90 total spend
+        { name: 'chatgpt', plan: 'enterprise', monthlySpend: 90, seats: 3, useCase: 'mixed' },
       ],
       primaryUseCase: 'mixed',
       teamSize: 5,
@@ -158,7 +161,8 @@ describe('Audit Engine', () => {
   test('Windsurf Team for 1-2 users suggests Pro', () => {
     const input: ToolInput = {
       tools: [
-        { name: 'windsurf', plan: 'team', monthlySpend: 30, seats: 2, useCase: 'coding' },
+        // 2 seats × $30/seat (team) = $60 total spend
+        { name: 'windsurf', plan: 'team', monthlySpend: 60, seats: 2, useCase: 'coding' },
       ],
       primaryUseCase: 'coding',
       teamSize: 5,

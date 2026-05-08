@@ -98,7 +98,7 @@ export function runAudit(input: ToolInput): AuditResult {
     // Skip for API/pay-as-you-go plans — these are usage-based, not subscription-based
     const isApiPlan = plan === 'api' || plan === 'pay_as_you_go';
     const isApiTool = name === 'anthropic-api' || name === 'openai-api';
-    if (savings < 50 && monthlySpend > 30 && !isApiPlan && !isApiTool) {
+    if (savings < 50 && monthlySpend >= 30 && !isApiPlan && !isApiTool) {
       const alt = ALTERNATIVES[useCase];
       if (alt && !isSameToolFamily(alt.cheaperTool, name)) {
         const altPrice = getAlternativePrice(alt.cheaperTool);
